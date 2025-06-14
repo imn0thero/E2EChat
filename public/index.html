@@ -1,0 +1,46 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <title>Index</title>
+</head>
+<body>
+  <h2>Selamat Datang</h2>
+  <input id="search" placeholder="Cari username">
+  <ul id="result"></ul>
+  <button id="logoutBtn">Logout</button>
+
+  <script src="/socket.io/socket.io.js"></script>
+  <script>
+    const socket = io();
+    const user = localStorage.getItem('username');
+    if (!user) location.href = 'login.html';
+
+    socket.emit('requestUserList');
+
+    socket.on('userList', users => {
+      const search = document.getElementById('search');
+      const result = document.getElementById('result');
+      search.oninput = () => {
+        const term = search.value.toLowerCase();
+        result.innerHTML = '';
+        users.forEach(u => {
+          if (u !== user && u.toLowerCase().includes(term)) {
+            const li = document.createElement('li');
+            li.innerText = u;
+            li.onclick = () => {
+              location.href = `chat.html?with=${u}`;
+            };
+            result.appendChild(li);
+          }
+        });
+      };
+    });
+
+    document.getElementById('logoutBtn').onclick = () => {
+      localStorage.removeItem('username');
+      location.href = 'login.html';
+    };
+  </script>
+</body>
+</html>
