@@ -10,16 +10,14 @@ const PORT = process.env.PORT || 3000;
 const USERS_FILE = path.join(__dirname, 'users.json');
 const MESSAGES_FILE = path.join(__dirname, 'messages.json');
 
-// Middleware
 app.use(express.static(path.join(__dirname, 'public')));
 app.use(express.json());
 
-// Init users.json & messages.json if not exist
 if (!fs.existsSync(USERS_FILE)) fs.writeFileSync(USERS_FILE, JSON.stringify({}));
 if (!fs.existsSync(MESSAGES_FILE)) fs.writeFileSync(MESSAGES_FILE, JSON.stringify([]));
 
 let messages = loadMessages();
-let onlineUsers = {}; // { username: socket.id }
+let onlineUsers = {};
 
 setInterval(() => {
   const now = Date.now();
@@ -39,7 +37,6 @@ function loadMessages() {
   try {
     return JSON.parse(fs.readFileSync(MESSAGES_FILE, 'utf-8'));
   } catch (err) {
-    console.error("Gagal memuat pesan:", err);
     return [];
   }
 }
@@ -72,35 +69,54 @@ io.on('connection', socket => {
       socket.emit('loginResult', { success: false, message: 'Username dan password wajib diisi' });
       return;
     }
-    if (users[data.username] === data.password) {
+    if (users[data.username] && users[data.username] === data.password) {
       currentUser = data.username;
       onlineUsers[currentUser] = socket.id;
       socket.emit('loginResult', { success: true, user: currentUser });
+      io.emit('userList', Object.keys(onlineUsers));
     } else {
       socket.emit('loginResult', { success: false, message: 'Username atau password salah' });
     }
   });
 
   socket.on('requestUserList', () => {
-    socket.emit('userList', Object.keys(loadUsers()));
+    if (currentUser) {
+      socket.emit('userList', Object.keys(onlineUsers));
+    }
   });
 
-  socket.on('joinPrivate', ({ user, with: partner }) => {
-    const room = [user, partner].sort().join('#');
-    socket.join(room);
-  });
+  socket.on('privateMessage', msg => {
+    const { from, to, text, iv } = msg;
+    if (!from || !to || !text || !iv) return;
 
-  socket.on('privateMessage', ({ from, to, text }) => {
-    const room = [from, to].sort().join('#');
-    const message = { id: uuidv4(), from, to, text, time: Date.now() };
-    messages.push(message);
+    const messageData = {
+      id: uuidv4(),
+      from,
+      to,
+      text,
+      iv,
+      time: Date.now()
+    };
+
+    messages.push(messageData);
     saveMessages(messages);
-    io.to(room).emit('privateMessage', message);
+
+    const toSocket = onlineUsers[to];
+    if (toSocket) io.to(toSocket).emit('privateMessage', messageData);
+
+    const fromSocket = onlineUsers[from];
+    if (fromSocket) io.to(fromSocket).emit('privateMessage', messageData);
+  });
+
+  socket.on('ecdh:exchange', data => {
+    const toSocket = onlineUsers[data.to];
+    if (toSocket) io.to(toSocket).emit('ecdh:exchange', data);
   });
 
   socket.on('logout', () => {
     if (currentUser) {
       delete onlineUsers[currentUser];
+      io.emit('userList', Object.keys(onlineUsers));
       currentUser = null;
     }
   });
@@ -108,6 +124,7 @@ io.on('connection', socket => {
   socket.on('disconnect', () => {
     if (currentUser) {
       delete onlineUsers[currentUser];
+      io.emit('userList', Object.keys(onlineUsers));
       currentUser = null;
     }
   });
