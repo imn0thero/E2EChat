@@ -1,94 +1,189 @@
+--- style.css ---
+/* Font dan warna dasar */
 body {
-  font-family: 'Segoe UI', sans-serif;
   margin: 0;
   padding: 0;
-  background-color: #f7f7f7;
-  color: #333;
-}
-
-#header {
+  font-family: 'Nova Round', cursive;
+  background-color: #fff;
+  color: #000;
   display: flex;
-  justify-content: space-between;
+  justify-content: center;
   align-items: center;
-  background-color: #4a90e2;
-  color: white;
-  padding: 10px 15px;
-  font-size: 1.1em;
+  height: 100vh;
+  transition: background-color 0.3s, color 0.3s;
 }
 
-#header button {
-  background: white;
-  color: #4a90e2;
-  border: none;
-  padding: 6px 12px;
-  font-weight: bold;
-  border-radius: 6px;
-  cursor: pointer;
+.container {
+  border: 2px solid #000;
+  border-radius: 15px;
+  padding: 20px;
+  max-width: 400px;
+  width: 100%;
+  background-color: #fff;
+  position: relative;
+  box-shadow: 0 0 10px #000;
+  transition: background-color 0.3s, border-color 0.3s;
 }
 
-#messages {
-  height: calc(100vh - 160px);
-  overflow-y: auto;
-  padding: 15px;
+.top-right {
+  position: absolute;
+  top: 10px;
+  right: 10px;
   display: flex;
-  flex-direction: column;
-  gap: 8px;
-  background-color: #eaeaea;
+  gap: 10px;
+}
+
+.toggle-btn, .logout-btn, .clear-btn {
+  background-color: transparent;
+  color: #000;
+  border: 2px solid #000;
+  padding: 6px 12px;
+  border-radius: 10px;
+  cursor: pointer;
+  font-family: 'Nova Round', cursive;
+  transition: background-color 0.3s, color 0.3s, border-color 0.3s;
+}
+
+.toggle-btn:hover, .logout-btn:hover, .clear-btn:hover {
+  background-color: #000;
+  color: #fff;
+}
+
+h2, h3 {
+  text-align: center;
+  margin-top: 40px;
+}
+
+#onlineUsers ul {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  text-align: center;
+}
+
+#chatbox {
+  height: 300px;
+  overflow-y: auto;
+  background-color: #fff;
+  border-radius: 10px;
+  padding: 10px;
+  margin: 10px 0;
+  border: 2px solid #000;
+  transition: background-color 0.3s, border-color 0.3s;
 }
 
 .message {
-  max-width: 70%;
-  padding: 10px 15px;
-  border-radius: 15px;
-  position: relative;
+  padding: 8px;
+  margin: 5px 0;
+  border-radius: 10px;
   word-wrap: break-word;
-  line-height: 1.4;
+  max-width: 80%;
 }
 
-.message.self {
-  background-color: #d2f8d2;
-  align-self: flex-end;
-  border-bottom-right-radius: 2px;
+.message-left {
+  border: 2px solid #000;
+  border-radius: 20px;
+  background-color: #fff;
+  color: #000;
+  text-align: left;
 }
 
-.message.partner {
-  background-color: #ffffff;
-  align-self: flex-start;
-  border-bottom-left-radius: 2px;
-}
-
-.timestamp {
-  font-size: 0.75em;
-  color: #666;
-  margin-top: 4px;
+.message-right {
+  border: 2px solid #000;
+  border-radius: 20px;
+  background-color: #fff;
+  color: #000;
   text-align: right;
+  margin-left: auto;
 }
 
-input#message {
-  width: 75%;
-  padding: 10px;
-  margin-left: 10px;
-  border-radius: 20px;
-  border: 1px solid #ccc;
-  outline: none;
-}
-
-button {
-  padding: 10px 16px;
-  border: none;
-  background-color: #4a90e2;
-  color: white;
-  border-radius: 20px;
-  margin-left: 10px;
-  cursor: pointer;
-}
-
-#footer {
+#inputArea {
   display: flex;
+  gap: 10px;
+}
+
+#msgInput {
+  flex: 1;
   padding: 10px;
-  background-color: #f0f0f0;
-  align-items: center;
-  position: fixed;
-  bottom: 0;
-  width: 100%;
+  border-radius: 10px;
+  border: 1px solid #000;
+  background-color: #fff;
+  color: #000;
+  font-family: 'Nova Round', cursive;
+  transition: background-color 0.3s, color 0.3s, border-color 0.3s;
+}
+
+#msgInput::placeholder {
+  color: #000;
+}
+
+#inputArea button {
+  padding: 10px 20px;
+  border-radius: 10px;
+  border: 2px solid #000;
+  background-color: transparent;
+  color: #000;
+  cursor: pointer;
+  font-family: 'Nova Round', cursive;
+  transition: background-color 0.3s, color 0.3s;
+}
+
+#inputArea button:hover {
+  background-color: #000;
+  color: #fff;
+}
+
+.datetime-inside {
+  text-align: center;
+  font-weight: bold;
+  font-family: 'Nova Round', cursive;
+  font-size: 14px;
+  margin-top: 10px;
+  padding-bottom: 5px;
+  color: #000;
+  transition: color 0.3s;
+}
+
+.dark-mode {
+  background-color: #000;
+  color: #fff;
+}
+
+.dark-mode .container {
+  background-color: #000;
+  border-color: #fff;
+  box-shadow: 0 0 10px #fff;
+}
+
+.dark-mode #chatbox,
+.dark-mode .message-left,
+.dark-mode .message-right,
+.dark-mode #msgInput {
+  background-color: #111;
+  color: #fff;
+  border-color: #fff;
+}
+
+.dark-mode .datetime-inside {
+  color: #fff;
+}
+
+.dark-mode #msgInput::placeholder {
+  color: #aaa;
+}
+
+.dark-mode .toggle-btn,
+.dark-mode .logout-btn,
+.dark-mode .clear-btn,
+.dark-mode #inputArea button {
+  border-color: #fff;
+  color: #fff;
+}
+
+.dark-mode .toggle-btn:hover,
+.dark-mode .logout-btn:hover,
+.dark-mode .clear-btn:hover,
+.dark-mode #inputArea button:hover {
+  background-color: #fff;
+  color: #000;
 }
