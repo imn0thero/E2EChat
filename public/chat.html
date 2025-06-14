@@ -56,6 +56,12 @@
       document.getElementById('message').value = '';
       encryptAndSend(text); // handled in ecdh-chat.js
     }
+    const div = document.createElement('div');
+div.className = 'message ' + (msg.from === username ? 'self' : 'partner');
+const time = new Date(msg.time).toLocaleTimeString();
+div.innerHTML = `<b>${msg.from}:</b> ${msg.text}<div class="timestamp">${time}</div>`;
+messagesDiv.appendChild(div);
+
   </script>
 </body>
 </html>
