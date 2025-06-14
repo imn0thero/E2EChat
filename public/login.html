@@ -9,13 +9,13 @@
   <input id="username" placeholder="Username">
   <input id="password" type="password" placeholder="Password">
   <button id="loginBtn">Login</button>
-  <p id="message"></p>
+  <p>Belum punya akun? <a href="signup.html">Daftar di sini</a></p>
 
   <script src="/socket.io/socket.io.js"></script>
   <script>
     const socket = io();
 
-    document.getElementById('loginBtn').onclick = () => {
+    loginBtn.onclick = () => {
       const username = document.getElementById('username').value;
       const password = document.getElementById('password').value;
       socket.emit('login', { username, password });
@@ -26,7 +26,7 @@
         localStorage.setItem('username', data.user);
         location.href = 'index.html';
       } else {
-        document.getElementById('message').innerText = data.message;
+        alert(data.message);
       }
     });
   </script>
