@@ -10,15 +10,16 @@ const PORT = process.env.PORT || 3000;
 const USERS_FILE = path.join(__dirname, 'users.json');
 const MESSAGES_FILE = path.join(__dirname, 'messages.json');
 
+// Middleware
 app.use(express.static(path.join(__dirname, 'public')));
 app.use(express.json());
 
+// Init users.json & messages.json if not exist
 if (!fs.existsSync(USERS_FILE)) fs.writeFileSync(USERS_FILE, JSON.stringify({}));
 if (!fs.existsSync(MESSAGES_FILE)) fs.writeFileSync(MESSAGES_FILE, JSON.stringify([]));
 
 let messages = loadMessages();
-let onlineUsers = {}; // username => socket.id
-const userPublicKeys = {}; // username => publicKey
+let onlineUsers = {}; // { username: socket.id }
 
 setInterval(() => {
   const now = Date.now();
@@ -71,49 +72,35 @@ io.on('connection', socket => {
       socket.emit('loginResult', { success: false, message: 'Username dan password wajib diisi' });
       return;
     }
-    if (users[data.username] && users[data.username] === data.password) {
+    if (users[data.username] === data.password) {
       currentUser = data.username;
       onlineUsers[currentUser] = socket.id;
       socket.emit('loginResult', { success: true, user: currentUser });
-      io.emit('userList', Object.keys(onlineUsers));
     } else {
       socket.emit('loginResult', { success: false, message: 'Username atau password salah' });
     }
   });
 
-  socket.on('register public key', ({ username, publicKey }) => {
-    userPublicKeys[username] = publicKey;
+  socket.on('requestUserList', () => {
+    socket.emit('userList', Object.keys(loadUsers()));
   });
 
-  socket.on('get public key', (username, callback) => {
-    callback(userPublicKeys[username] || null);
+  socket.on('joinPrivate', ({ user, with: partner }) => {
+    const room = [user, partner].sort().join('#');
+    socket.join(room);
   });
 
-  socket.on('search user', (query) => {
-    const users = loadUsers();
-    const found = Object.keys(users).filter(u => u.toLowerCase().includes(query.toLowerCase()));
-    socket.emit('search result', found);
-  });
-
-  socket.on('private message', (data) => {
-    const { to, ciphertext, iv, time } = data;
-    const from = currentUser;
-    if (!from || !to || !ciphertext || !iv) return;
-
-    const msg = { id: uuidv4(), from, to, ciphertext, iv, time };
-    messages.push(msg);
+  socket.on('privateMessage', ({ from, to, text }) => {
+    const room = [from, to].sort().join('#');
+    const message = { id: uuidv4(), from, to, text, time: Date.now() };
+    messages.push(message);
     saveMessages(messages);
-
-    const targetSocketId = onlineUsers[to];
-    if (targetSocketId) {
-      io.to(targetSocketId).emit('private message', { from, ciphertext, iv, time });
-    }
+    io.to(room).emit('privateMessage', message);
   });
 
   socket.on('logout', () => {
     if (currentUser) {
       delete onlineUsers[currentUser];
-      io.emit('userList', Object.keys(onlineUsers));
       currentUser = null;
     }
   });
@@ -121,7 +108,6 @@ io.on('connection', socket => {
   socket.on('disconnect', () => {
     if (currentUser) {
       delete onlineUsers[currentUser];
-      io.emit('userList', Object.keys(onlineUsers));
       currentUser = null;
     }
   });
