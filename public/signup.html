@@ -1,34 +1,39 @@
 <!DOCTYPE html>
-<html>
+<html lang="id">
 <head>
-  <meta charset="UTF-8">
-  <link rel="stylesheet" href="style.css">
-
-  <title>Signup</title>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Daftar</title>
+  <link rel="stylesheet" href="style.css" />
 </head>
 <body>
-  <h2>Signup</h2>
-  <input id="username" placeholder="Username">
-  <input id="password" type="password" placeholder="Password">
-  <button id="signupBtn">Daftar</button>
-  <p>Sudah punya akun? <a href="login.html">Login di sini</a></p>
-  <script src="/socket.io/socket.io.js"></script>
-  <script>
-    const socket = io();
-    signupBtn.onclick = () => {
-      const username = document.getElementById('username').value;
-      const password = document.getElementById('password').value;
-      socket.emit('signup', { username, password });
-    };
+  <div class="container">
+    <h2>Daftar</h2>
+    <input type="text" id="username" placeholder="Username" /><br/>
+    <input type="password" id="password" placeholder="Password" /><br/>
+    <button onclick="signup()">Daftar</button>
+    <p>Sudah punya akun? <a href="login.html">Login</a></p>
+  </div>
 
-    socket.on('signupResult', data => {
-      if (data.success) {
-        alert('Berhasil daftar. Silakan login.');
-        location.href = 'login.html';
-      } else {
-        alert(data.message);
-      }
-    });
+  <script>
+    function signup() {
+      const u = document.getElementById("username").value;
+      const p = document.getElementById("password").value;
+      if (!u || !p) return alert("Lengkapi data!");
+
+      fetch('/register', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ username: u, password: p })
+      }).then(res => {
+        if (res.ok) {
+          alert('Berhasil daftar, silakan login');
+          window.location.href = 'login.html';
+        } else {
+          alert('Gagal daftar');
+        }
+      });
+    }
   </script>
 </body>
 </html>
