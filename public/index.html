@@ -1,48 +1,135 @@
 <!DOCTYPE html>
-<html>
+<html lang="id">
 <head>
-  <meta charset="UTF-8">
-  <link rel="stylesheet" href="style.css">
-
-  <title>Index</title>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Chat</title>
+  <link rel="stylesheet" href="style.css" />
+  <link href="https://fonts.googleapis.com/css2?family=Nova+Round&display=swap" rel="stylesheet"/>
 </head>
 <body>
-  <h2>Selamat Datang</h2>
-  <input id="search" placeholder="Cari username">
-  <ul id="result"></ul>
-  <button id="logoutBtn">Logout</button>
+  <div class="container">
+    <div class="top-right">
+      <button class="logout-btn" onclick="logout()">Logout</button>
+      <button class="toggle-btn" onclick="toggleDarkMode()">🌓</button>
+    </div>
+    <button onclick="clearMessages()" style="position: absolute; top: 10px; left: 10px;" class="toggle-btn">🗑️</button>
+
+    <h2>Chat App</h2>
+    <h3 id="userStatus">Memuat status...</h3>
+
+    <div id="chatbox"></div>
+
+    <div id="inputArea">
+      <input type="text" id="msgInput" placeholder="Ketik pesan..." />
+      <button onclick="sendMessage()">Kirim</button>
+    </div>
+
+    <div class="datetime-inside" id="timestamp"></div>
+  </div>
 
   <script src="/socket.io/socket.io.js"></script>
   <script>
+    // AES Encryption
+    const AES_KEY = cryptoKey();
+    const AES_IV = window.crypto.getRandomValues(new Uint8Array(16));
+
+    async function encryptAES(text) {
+      const enc = new TextEncoder().encode(text);
+      const encrypted = await crypto.subtle.encrypt(
+        { name: "AES-CBC", iv: AES_IV },
+        AES_KEY,
+        enc
+      );
+      return btoa(String.fromCharCode(...new Uint8Array(encrypted)));
+    }
+
+    async function decryptAES(encryptedB64) {
+      const data = Uint8Array.from(atob(encryptedB64), c => c.charCodeAt(0));
+      const decrypted = await crypto.subtle.decrypt(
+        { name: "AES-CBC", iv: AES_IV },
+        AES_KEY,
+        data
+      );
+      return new TextDecoder().decode(decrypted);
+    }
+
+    function cryptoKey() {
+      const raw = new Uint8Array(32);
+      window.crypto.getRandomValues(raw);
+      return crypto.subtle.importKey("raw", raw, "AES-CBC", false, ["encrypt", "decrypt"]);
+    }
+
+    // App
     const socket = io();
-    const user = localStorage.getItem('username');
-    if (!user) location.href = 'login.html';
+    const username = localStorage.getItem('username');
+    const password = localStorage.getItem('password');
+    if (!username || !password) window.location.href = "login.html";
 
-    socket.emit('requestUserList');
+    document.getElementById('timestamp').textContent = new Date().toLocaleString();
 
-    socket.on('userList', users => {
-      const search = document.getElementById('search');
-      const result = document.getElementById('result');
-      search.oninput = () => {
-        const term = search.value.toLowerCase();
-        result.innerHTML = '';
-        users.forEach(u => {
-          if (u !== user && u.toLowerCase().includes(term)) {
-            const li = document.createElement('li');
-            li.innerText = u;
-            li.onclick = () => {
-              location.href = `chat.html?with=${u}`;
-            };
-            result.appendChild(li);
-          }
-        });
-      };
+    socket.emit('login', { username, password });
+
+    socket.on('loginResult', async ({ success, messages }) => {
+      if (!success) {
+        alert("Login gagal");
+        return location.href = "login.html";
+      }
+      document.getElementById('chatbox').innerHTML = '';
+      for (let msg of messages) {
+        addMessage(msg.user, msg.text, msg.time);
+      }
     });
 
-    document.getElementById('logoutBtn').onclick = () => {
+    socket.on('message', (msg) => {
+      addMessage(msg.user, msg.text, msg.time);
+    });
+
+    socket.on('userList', (list) => {
+      const status = list.length ? (
+        list[0].online
+          ? `${list[0].name} sedang online`
+          : `${list[0].name} offline (${new Date(list[0].lastSeen).toLocaleString()})`
+      ) : "Tidak ada lawan bicara";
+      document.getElementById('userStatus').textContent = status;
+    });
+
+    function sendMessage() {
+      const input = document.getElementById('msgInput');
+      const text = input.value.trim();
+      if (!text) return;
+      socket.emit('message', { text });
+      input.value = '';
+    }
+
+    function addMessage(user, text, time) {
+      const div = document.createElement('div');
+      div.className = 'message ' + (user === username ? 'message-right' : 'message-left');
+      const date = new Date(time).toLocaleTimeString();
+      div.innerHTML = `<strong>${user}</strong><br>${text}<br><small>${date}</small>`;
+      document.getElementById('chatbox').appendChild(div);
+      div.scrollIntoView();
+    }
+
+    function logout() {
+      socket.emit('logout');
       localStorage.removeItem('username');
-      location.href = 'login.html';
-    };
+      localStorage.removeItem('password');
+      window.location.href = 'login.html';
+    }
+
+    function clearMessages() {
+      socket.emit('clearMessages');
+      document.getElementById('chatbox').innerHTML = '';
+    }
+
+    // Tema gelap
+    const dark = localStorage.getItem('darkMode') === 'true';
+    if (dark) document.body.classList.add('dark-mode');
+    function toggleDarkMode() {
+      document.body.classList.toggle('dark-mode');
+      localStorage.setItem('darkMode', document.body.classList.contains('dark-mode'));
+    }
   </script>
 </body>
 </html>
