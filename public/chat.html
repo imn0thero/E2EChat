@@ -3,13 +3,59 @@
 <head>
   <meta charset="UTF-8">
   <title>Chat</title>
+  <style>
+    #header { display: flex; justify-content: space-between; align-items: center; }
+    #messages { height: 300px; overflow-y: scroll; border: 1px solid #ccc; padding: 5px; }
+    .message { margin-bottom: 10px; }
+    .timestamp { font-size: 0.8em; color: gray; }
+  </style>
 </head>
 <body>
-  <h2>Chat dengan <span id="partner"></span></h2>
-  <ul id="messages"></ul>
-  <input id="message" placeholder="Tulis pesan">
-  <button id="sendBtn">Kirim</button>
+  <div id="header">
+    <button onclick="window.location.href='index.html'">⬅ Kembali</button>
+    <h3 id="partnerStatus">Partner: Offline</h3>
+  </div>
+
+  <div id="messages"></div>
+  <input id="message" placeholder="Tulis pesan...">
+  <button onclick="sendMessage()">Kirim</button>
+
   <script src="/socket.io/socket.io.js"></script>
   <script src="ecdh-chat.js"></script>
+  <script>
+    const socket = io();
+    const username = localStorage.getItem('username');
+    const partner = localStorage.getItem('chatWith');
+    const messagesDiv = document.getElementById('messages');
+
+    document.getElementById('partnerStatus').textContent = `Partner: ${partner} (Offline)`;
+
+    socket.emit('requestUserList');
+    socket.on('userList', list => {
+      if (list.includes(partner)) {
+        document.getElementById('partnerStatus').textContent = `Partner: ${partner} (Online)`;
+      } else {
+        document.getElementById('partnerStatus').textContent = `Partner: ${partner} (Offline)`;
+      }
+    });
+
+    socket.on('privateMessage', msg => {
+      if ((msg.from === username && msg.to === partner) || (msg.from === partner && msg.to === username)) {
+        const div = document.createElement('div');
+        div.className = 'message';
+        const time = new Date(msg.time).toLocaleTimeString();
+        div.innerHTML = `<b>${msg.from}:</b> ${msg.text} <div class="timestamp">${time}</div>`;
+        messagesDiv.appendChild(div);
+        messagesDiv.scrollTop = messagesDiv.scrollHeight;
+      }
+    });
+
+    function sendMessage() {
+      const text = document.getElementById('message').value.trim();
+      if (!text) return;
+      document.getElementById('message').value = '';
+      encryptAndSend(text); // handled in ecdh-chat.js
+    }
+  </script>
 </body>
 </html>
