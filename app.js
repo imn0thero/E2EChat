@@ -1,19 +1,20 @@
-<!-- =================== app.js =================== -->
 const express = require('express');
-const http = require('http');
-const { Server } = require('socket.io');
-const fs = require('fs');
-const crypto = require('crypto');
 const app = express();
-const server = http.createServer(app);
-const io = new Server(server);
+const server = require('http').createServer(app);
+const fs = require('fs');
+const io = require('socket.io')(server);
+const crypto = require('crypto');
+const path = require('path');
 
-app.use(express.static(__dirname));
-app.use(express.json());
+const PORT = 3000;
 
-const USERS_FILE = './users.json';
-const MESSAGES_FILE = './messages.json';
-const AES_KEY = crypto.randomBytes(32);
+const users = JSON.parse(fs.readFileSync('users.json', 'utf-8') || '[]');
+let onlineUsers = {};
+let lastSeen = {};
+let messages = JSON.parse(fs.existsSync('messages.json') ? fs.readFileSync('messages.json') : '[]');
+
+// AES Configuration
+const AES_KEY = crypto.randomBytes(32); // Simpan di tempat aman untuk produksi
 const AES_IV = crypto.randomBytes(16);
 
 function encrypt(text) {
@@ -30,120 +31,99 @@ function decrypt(encrypted) {
   return decrypted;
 }
 
-function loadJSON(file) {
-  try {
-    return JSON.parse(fs.readFileSync(file));
-  } catch {
-    return [];
-  }
-}
+// Middleware
+app.use(express.static('public'));
+app.use(express.json());
 
-function saveJSON(file, data) {
-  fs.writeFileSync(file, JSON.stringify(data, null, 2));
-}
+// Serve HTML
+app.get('/', (_, res) => res.sendFile(__dirname + '/public/login.html'));
 
-const users = loadJSON(USERS_FILE);
-let messages = loadJSON(MESSAGES_FILE);
-let onlineUsers = {};
-
-function cleanupMessages() {
-  const now = Date.now();
-  messages = messages.filter(msg => now - msg.time <= 86400000);
-  saveJSON(MESSAGES_FILE, messages);
-}
-setInterval(cleanupMessages, 60000);
-
-io.on('connection', socket => {
+// Socket.IO
+io.on('connection', (socket) => {
   let currentUser = null;
 
-  socket.on('signup', ({ username, password }) => {
-    if (users.find(u => u.username === username)) {
-      socket.emit('signupResult', { success: false, message: 'Username sudah dipakai' });
-      return;
-    }
-    users.push({ username, password });
-    saveJSON(USERS_FILE, users);
-    socket.emit('signupResult', { success: true });
-  });
-
   socket.on('login', ({ username, password }) => {
-    const valid = users.find(u => u.username === username && u.password === password);
-    if (!valid) {
-      socket.emit('loginResult', { success: false, message: 'Login gagal' });
+    const user = users.find(u => u.username === username && u.password === password);
+    if (!user) {
+      socket.emit('loginResult', { success: false, message: 'Login gagal!' });
       return;
     }
+
     currentUser = username;
-    onlineUsers[username] = { socketId: socket.id, lastSeen: Date.now() };
-    socket.emit('loginResult', {
-      success: true,
-      messages: messages.filter(m => [m.from, m.to].includes(username)).map(m => ({
+    onlineUsers[username] = socket.id;
+    lastSeen[username] = new Date();
+
+    const filtered = messages
+      .filter(m => [m.from, m.to].includes(username))
+      .map(m => ({
         user: m.from,
         text: decrypt(m.text),
         time: m.time
-      }))
-    });
-    updateOnlineStatus();
+      }));
+
+    socket.emit('loginResult', { success: true, messages: filtered });
+    io.emit('userList', getUserStatus(username));
   });
 
   socket.on('message', ({ text }) => {
     if (!currentUser) return;
-    const targetUser = Object.keys(onlineUsers).find(u => u !== currentUser);
-    if (!targetUser) return;
-    const encText = encrypt(text);
-    const message = {
+    const target = Object.keys(onlineUsers).find(u => u !== currentUser);
+    if (!target) return;
+
+    const encryptedText = encrypt(text);
+    const msg = {
       from: currentUser,
-      to: targetUser,
-      text: encText,
+      to: target,
+      text: encryptedText,
       time: Date.now()
     };
-    messages.push(message);
-    saveJSON(MESSAGES_FILE, messages);
+    messages.push(msg);
+    fs.writeFileSync('messages.json', JSON.stringify(messages));
 
-    [currentUser, targetUser].forEach(u => {
-      const socketId = onlineUsers[u]?.socketId;
-      if (socketId) {
-        io.to(socketId).emit('message', {
-          user: message.from,
-          text,
-          time: message.time
-        });
-      }
-    });
+    const msgDecrypted = {
+      user: currentUser,
+      text,
+      time: msg.time
+    };
+
+    socket.emit('message', msgDecrypted);
+    if (onlineUsers[target]) {
+      io.to(onlineUsers[target]).emit('message', msgDecrypted);
+    }
   });
 
   socket.on('logout', () => {
     if (currentUser) {
-      onlineUsers[currentUser].lastSeen = Date.now();
+      lastSeen[currentUser] = new Date();
       delete onlineUsers[currentUser];
-      updateOnlineStatus();
+      io.emit('userList', getUserStatus(currentUser));
     }
   });
 
-  socket.on('deleteAll', () => {
-    messages = messages.filter(m => m.from !== currentUser && m.to !== currentUser);
-    saveJSON(MESSAGES_FILE, messages);
-    socket.emit('loginResult', {
-      success: true,
-      messages: []
-    });
+  socket.on('clearMessages', () => {
+    messages = messages.filter(m => ![m.from, m.to].includes(currentUser));
+    fs.writeFileSync('messages.json', JSON.stringify(messages));
+    socket.emit('message', { user: "System", text: "Semua pesan dihapus.", time: Date.now() });
   });
 
   socket.on('disconnect', () => {
     if (currentUser) {
-      onlineUsers[currentUser].lastSeen = Date.now();
+      lastSeen[currentUser] = new Date();
       delete onlineUsers[currentUser];
-      updateOnlineStatus();
+      io.emit('userList', getUserStatus(currentUser));
     }
   });
-
-  function updateOnlineStatus() {
-    if (!currentUser) return;
-    const otherUser = Object.keys(onlineUsers).find(u => u !== currentUser);
-    const status = otherUser ? `🔵 ${otherUser} (Online)` : `⚫ ${Object.keys(users).find(u => u !== currentUser)} (Offline)`;
-    const lastSeen = otherUser ? null : new Date(onlineUsers[Object.keys(users).find(u => u !== currentUser)]?.lastSeen || Date.now()).toLocaleTimeString();
-    socket.emit('userList', { name: status, lastSeen });
-  }
 });
 
-server.listen(3000, () => console.log('Server aktif di http://localhost:3000'));
+function getUserStatus(requestingUser) {
+  const target = users.find(u => u.username !== requestingUser);
+  if (!target) return [];
+  const isOnline = onlineUsers[target.username] ? true : false;
+  return [{
+    name: target.username,
+    online: isOnline,
+    lastSeen: lastSeen[target.username] || null
+  }];
+}
 
+server.listen(PORT, () => console.log(`Server running on http://localhost:${PORT}`));
