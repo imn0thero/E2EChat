@@ -1,135 +1,149 @@
+<!-- =================== app.js =================== -->
 const express = require('express');
-const app = express();
-const http = require('http').createServer(app);
-const io = require('socket.io')(http);
-const path = require('path');
+const http = require('http');
+const { Server } = require('socket.io');
 const fs = require('fs');
-const { v4: uuidv4 } = require('uuid');
+const crypto = require('crypto');
+const app = express();
+const server = http.createServer(app);
+const io = new Server(server);
 
-const PORT = process.env.PORT || 3000;
-const USERS_FILE = path.join(__dirname, 'users.json');
-const MESSAGES_FILE = path.join(__dirname, 'messages.json');
-
-app.use(express.static(path.join(__dirname, 'public')));
+app.use(express.static(__dirname));
 app.use(express.json());
 
-if (!fs.existsSync(USERS_FILE)) fs.writeFileSync(USERS_FILE, JSON.stringify({}));
-if (!fs.existsSync(MESSAGES_FILE)) fs.writeFileSync(MESSAGES_FILE, JSON.stringify([]));
+const USERS_FILE = './users.json';
+const MESSAGES_FILE = './messages.json';
+const AES_KEY = crypto.randomBytes(32);
+const AES_IV = crypto.randomBytes(16);
 
-let messages = loadMessages();
-let onlineUsers = {};
-
-setInterval(() => {
-  const now = Date.now();
-  messages = messages.filter(m => now - m.time < 24 * 60 * 60 * 1000);
-  saveMessages(messages);
-}, 60 * 1000);
-
-function loadUsers() {
-  return JSON.parse(fs.readFileSync(USERS_FILE, 'utf-8'));
+function encrypt(text) {
+  const cipher = crypto.createCipheriv('aes-256-cbc', AES_KEY, AES_IV);
+  let encrypted = cipher.update(text, 'utf8', 'hex');
+  encrypted += cipher.final('hex');
+  return encrypted;
 }
 
-function saveUsers(users) {
-  fs.writeFileSync(USERS_FILE, JSON.stringify(users, null, 2));
+function decrypt(encrypted) {
+  const decipher = crypto.createDecipheriv('aes-256-cbc', AES_KEY, AES_IV);
+  let decrypted = decipher.update(encrypted, 'hex', 'utf8');
+  decrypted += decipher.final('utf8');
+  return decrypted;
 }
 
-function loadMessages() {
+function loadJSON(file) {
   try {
-    return JSON.parse(fs.readFileSync(MESSAGES_FILE, 'utf-8'));
-  } catch (err) {
+    return JSON.parse(fs.readFileSync(file));
+  } catch {
     return [];
   }
 }
 
-function saveMessages(msgs) {
-  fs.writeFileSync(MESSAGES_FILE, JSON.stringify(msgs, null, 2));
+function saveJSON(file, data) {
+  fs.writeFileSync(file, JSON.stringify(data, null, 2));
 }
+
+const users = loadJSON(USERS_FILE);
+let messages = loadJSON(MESSAGES_FILE);
+let onlineUsers = {};
+
+function cleanupMessages() {
+  const now = Date.now();
+  messages = messages.filter(msg => now - msg.time <= 86400000);
+  saveJSON(MESSAGES_FILE, messages);
+}
+setInterval(cleanupMessages, 60000);
 
 io.on('connection', socket => {
   let currentUser = null;
 
-  socket.on('signup', data => {
-    const users = loadUsers();
-    if (!data.username || !data.password) {
-      socket.emit('signupResult', { success: false, message: 'Username dan password wajib diisi' });
-      return;
-    }
-    if (users[data.username]) {
+  socket.on('signup', ({ username, password }) => {
+    if (users.find(u => u.username === username)) {
       socket.emit('signupResult', { success: false, message: 'Username sudah dipakai' });
-    } else {
-      users[data.username] = data.password;
-      saveUsers(users);
-      socket.emit('signupResult', { success: true });
-    }
-  });
-
-  socket.on('login', data => {
-    const users = loadUsers();
-    if (!data.username || !data.password) {
-      socket.emit('loginResult', { success: false, message: 'Username dan password wajib diisi' });
       return;
     }
-    if (users[data.username] && users[data.username] === data.password) {
-      currentUser = data.username;
-      onlineUsers[currentUser] = socket.id;
-      socket.emit('loginResult', { success: true, user: currentUser });
-      io.emit('userList', Object.keys(onlineUsers));
-    } else {
-      socket.emit('loginResult', { success: false, message: 'Username atau password salah' });
-    }
+    users.push({ username, password });
+    saveJSON(USERS_FILE, users);
+    socket.emit('signupResult', { success: true });
   });
 
-  socket.on('requestUserList', () => {
-    if (currentUser) {
-      socket.emit('userList', Object.keys(onlineUsers));
+  socket.on('login', ({ username, password }) => {
+    const valid = users.find(u => u.username === username && u.password === password);
+    if (!valid) {
+      socket.emit('loginResult', { success: false, message: 'Login gagal' });
+      return;
     }
+    currentUser = username;
+    onlineUsers[username] = { socketId: socket.id, lastSeen: Date.now() };
+    socket.emit('loginResult', {
+      success: true,
+      messages: messages.filter(m => [m.from, m.to].includes(username)).map(m => ({
+        user: m.from,
+        text: decrypt(m.text),
+        time: m.time
+      }))
+    });
+    updateOnlineStatus();
   });
 
-  socket.on('privateMessage', msg => {
-    const { from, to, text, iv } = msg;
-    if (!from || !to || !text || !iv) return;
-
-    const messageData = {
-      id: uuidv4(),
-      from,
-      to,
-      text,
-      iv,
+  socket.on('message', ({ text }) => {
+    if (!currentUser) return;
+    const targetUser = Object.keys(onlineUsers).find(u => u !== currentUser);
+    if (!targetUser) return;
+    const encText = encrypt(text);
+    const message = {
+      from: currentUser,
+      to: targetUser,
+      text: encText,
       time: Date.now()
     };
+    messages.push(message);
+    saveJSON(MESSAGES_FILE, messages);
 
-    messages.push(messageData);
-    saveMessages(messages);
-
-    const toSocket = onlineUsers[to];
-    if (toSocket) io.to(toSocket).emit('privateMessage', messageData);
-
-    const fromSocket = onlineUsers[from];
-    if (fromSocket) io.to(fromSocket).emit('privateMessage', messageData);
-  });
-
-  socket.on('ecdh:exchange', data => {
-    const toSocket = onlineUsers[data.to];
-    if (toSocket) io.to(toSocket).emit('ecdh:exchange', data);
+    [currentUser, targetUser].forEach(u => {
+      const socketId = onlineUsers[u]?.socketId;
+      if (socketId) {
+        io.to(socketId).emit('message', {
+          user: message.from,
+          text,
+          time: message.time
+        });
+      }
+    });
   });
 
   socket.on('logout', () => {
     if (currentUser) {
+      onlineUsers[currentUser].lastSeen = Date.now();
       delete onlineUsers[currentUser];
-      io.emit('userList', Object.keys(onlineUsers));
-      currentUser = null;
+      updateOnlineStatus();
     }
+  });
+
+  socket.on('deleteAll', () => {
+    messages = messages.filter(m => m.from !== currentUser && m.to !== currentUser);
+    saveJSON(MESSAGES_FILE, messages);
+    socket.emit('loginResult', {
+      success: true,
+      messages: []
+    });
   });
 
   socket.on('disconnect', () => {
     if (currentUser) {
+      onlineUsers[currentUser].lastSeen = Date.now();
       delete onlineUsers[currentUser];
-      io.emit('userList', Object.keys(onlineUsers));
-      currentUser = null;
+      updateOnlineStatus();
     }
   });
+
+  function updateOnlineStatus() {
+    if (!currentUser) return;
+    const otherUser = Object.keys(onlineUsers).find(u => u !== currentUser);
+    const status = otherUser ? `🔵 ${otherUser} (Online)` : `⚫ ${Object.keys(users).find(u => u !== currentUser)} (Offline)`;
+    const lastSeen = otherUser ? null : new Date(onlineUsers[Object.keys(users).find(u => u !== currentUser)]?.lastSeen || Date.now()).toLocaleTimeString();
+    socket.emit('userList', { name: status, lastSeen });
+  }
 });
 
-http.listen(PORT, () => {
-  console.log(`Server berjalan di port ${PORT}`);
-});
+server.listen(3000, () => console.log('Server aktif di http://localhost:3000'));
+
