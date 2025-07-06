@@ -1,135 +1,112 @@
 <!DOCTYPE html>
 <html lang="id">
 <head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-  <title>Chat</title>
-  <link rel="stylesheet" href="style.css" />
-  <link href="https://fonts.googleapis.com/css2?family=Nova+Round&display=swap" rel="stylesheet"/>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>💕</title>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="stylee.css">
 </head>
 <body>
-  <div class="container">
-    <div class="top-right">
-      <button class="logout-btn" onclick="logout()">Logout</button>
-      <button class="toggle-btn" onclick="toggleDarkMode()">🌓</button>
-    </div>
-    <button onclick="clearMessages()" style="position: absolute; top: 10px; left: 10px;" class="toggle-btn">🗑️</button>
-
-    <h2>Chat App</h2>
-    <h3 id="userStatus">Memuat status...</h3>
-
-    <div id="chatbox"></div>
-
-    <div id="inputArea">
-      <input type="text" id="msgInput" placeholder="Ketik pesan..." />
-      <button onclick="sendMessage()">Kirim</button>
+    <!-- Login Screen -->
+    <div id="login-screen">
+        <div class="login-container">
+            <h1><i class="fas fa-heart"></i>Mau Masuk Ke Hatiku Sayang?</h1>
+            <div class="input-group">
+                <input type="text" id="username-input" placeholder="Masukkan nama..." maxlength="20">
+                <button id="join-btn"><i class="fas fa-sign-in-alt"></i></button>
+            </div>
+            <p id="login-error"></p>
+        </div>
     </div>
 
-    <div class="datetime-inside" id="timestamp"></div>
-  </div>
+    <!-- Main Chat Screen (hidden initially) -->
+    <div id="chat-screen" class="hidden">
+        <!-- Header -->
+        <div class="chat-header">
+            <div class="header-left">
+                <h2><i class="fas fa-heart"></i>𖡼.𖤣𖥧𖡼.𖤣𖥧</h2>
+            </div>
+            <div class="header-center">
+                <div id="online-users-toggle">
+                    <i class="fas fa-users"></i> <span id="online-count">0</span>
+                </div>
+            </div>
+            <div class="header-right">
+                <button id="clear-messages-btn" title="Hapus Semua Pesan">
+                    <i class="fas fa-trash-alt"></i>
+                </button>
+            </div>
+        </div>
 
-  <script src="/socket.io/socket.io.js"></script>
-  <script>
-    // AES Encryption
-    const AES_KEY = cryptoKey();
-    const AES_IV = window.crypto.getRandomValues(new Uint8Array(16));
+        <!-- Online Users Sidebar (initially hidden, toggles on small screens) -->
+        <div id="online-users-panel" class="hidden-mobile">
+            <div class="panel-header">
+                <h3>Online <span id="users-count">0</span></h3>
+                <button id="close-users-btn" class="visible-mobile">
+                    <i class="fas fa-times"></i>
+                </button>
+            </div>
+            <ul id="online-users-list"></ul>
+        </div>
 
-    async function encryptAES(text) {
-      const enc = new TextEncoder().encode(text);
-      const encrypted = await crypto.subtle.encrypt(
-        { name: "AES-CBC", iv: AES_IV },
-        AES_KEY,
-        enc
-      );
-      return btoa(String.fromCharCode(...new Uint8Array(encrypted)));
-    }
+        <!-- Messages Container -->
+        <div id="messages-container">
+            <div id="messages"></div>
+            <div id="typing-indicator" class="hidden">
+                <span id="typing-username"></span> sedang menyampaikan perasaan...
+            </div>
+        </div>
 
-    async function decryptAES(encryptedB64) {
-      const data = Uint8Array.from(atob(encryptedB64), c => c.charCodeAt(0));
-      const decrypted = await crypto.subtle.decrypt(
-        { name: "AES-CBC", iv: AES_IV },
-        AES_KEY,
-        data
-      );
-      return new TextDecoder().decode(decrypted);
-    }
+        <!-- Input Area -->
+        <div class="chat-input">
+            <div class="attachment-preview" id="attachment-preview"></div>
+            <div class="input-container">
+                <label for="file-input" class="file-label" title="Upload File">
+                    <i class="fas fa-paperclip"></i>
+                </label>
+                <input type="file" id="file-input" accept="image/*,video/*,audio/*,.pdf,.doc,.docx,.txt" hidden>
+                <textarea id="message-input" placeholder="Sampaikan perasaan..." rows="1"></textarea>
+                <button id="send-btn" disabled title="Kirim">
+                    <i class="fas fa-paper-plane"></i>
+                </button>
+            </div>
+        </div>
+    </div>
 
-    function cryptoKey() {
-      const raw = new Uint8Array(32);
-      window.crypto.getRandomValues(raw);
-      return crypto.subtle.importKey("raw", raw, "AES-CBC", false, ["encrypt", "decrypt"]);
-    }
+    <!-- Templates -->
+    <template id="message-template">
+        <div class="message">
+            <div class="message-header">
+                <span class="message-username"></span>
+                <span class="message-time"></span>
+            </div>
+            <div class="message-content"></div>
+        </div>
+    </template>
 
-    // App
-    const socket = io();
-    const username = localStorage.getItem('username');
-    const password = localStorage.getItem('password');
-    if (!username || !password) window.location.href = "login.html";
+    <!-- Floating Hearts -->
+<div class="floating-hearts">
+    <div class="heart">💖</div>
+    <div class="heart">💕</div>
+    <div class="heart">💝</div>
+    <div class="heart">💗</div>
+    <div class="heart">💓</div>
+    <div class="heart">💖</div>
+    <div class="heart">💕</div>
+    <div class="heart">💝</div>
+    <div class="heart">💗</div>
+</div>
 
-    document.getElementById('timestamp').textContent = new Date().toLocaleString();
+<!-- Sparkles -->
+<div class="sparkles">
+    <div class="sparkle">✨</div>
+    <div class="sparkle">⭐</div>
+    <div class="sparkle">✨</div>
+    <div class="sparkle">⭐</div>
 
-    socket.emit('login', { username, password });
-
-    socket.on('loginResult', async ({ success, messages }) => {
-      if (!success) {
-        alert("Login gagal");
-        return location.href = "login.html";
-      }
-      document.getElementById('chatbox').innerHTML = '';
-      for (let msg of messages) {
-        addMessage(msg.user, msg.text, msg.time);
-      }
-    });
-
-    socket.on('message', (msg) => {
-      addMessage(msg.user, msg.text, msg.time);
-    });
-
-    socket.on('userList', (list) => {
-      const status = list.length ? (
-        list[0].online
-          ? `${list[0].name} sedang online`
-          : `${list[0].name} offline (${new Date(list[0].lastSeen).toLocaleString()})`
-      ) : "Tidak ada lawan bicara";
-      document.getElementById('userStatus').textContent = status;
-    });
-
-    function sendMessage() {
-      const input = document.getElementById('msgInput');
-      const text = input.value.trim();
-      if (!text) return;
-      socket.emit('message', { text });
-      input.value = '';
-    }
-
-    function addMessage(user, text, time) {
-      const div = document.createElement('div');
-      div.className = 'message ' + (user === username ? 'message-right' : 'message-left');
-      const date = new Date(time).toLocaleTimeString();
-      div.innerHTML = `<strong>${user}</strong><br>${text}<br><small>${date}</small>`;
-      document.getElementById('chatbox').appendChild(div);
-      div.scrollIntoView();
-    }
-
-    function logout() {
-      socket.emit('logout');
-      localStorage.removeItem('username');
-      localStorage.removeItem('password');
-      window.location.href = 'login.html';
-    }
-
-    function clearMessages() {
-      socket.emit('clearMessages');
-      document.getElementById('chatbox').innerHTML = '';
-    }
-
-    // Tema gelap
-    const dark = localStorage.getItem('darkMode') === 'true';
-    if (dark) document.body.classList.add('dark-mode');
-    function toggleDarkMode() {
-      document.body.classList.toggle('dark-mode');
-      localStorage.setItem('darkMode', document.body.classList.contains('dark-mode'));
-    }
-  </script>
+    <script src="/socket.io/socket.io.js"></script>
+    <script src="script.js"></script>
 </body>
 </html>
